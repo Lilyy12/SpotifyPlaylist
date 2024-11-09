@@ -1,0 +1,11 @@
+/.idea/.idea.LilyPlaylists/.idea/.gitignore
+/.idea/.idea.LilyPlaylists/.idea/encodings.xml
+/.idea/.idea.LilyPlaylists/.idea/indexLayout.xml
+/obj/project.packagespec.json
+/obj/rider.project.model.nuget.info
+/obj/rider.project.restore.info
+/.idea/.idea.LilyPlaylists/.idea/vcs.xml
+/obj/Debug/
+/obj/Release/
+/bin/Debug/
+/bin/Release/

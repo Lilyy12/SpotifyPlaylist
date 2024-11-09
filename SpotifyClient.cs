@@ -1,5 +1,7 @@
-﻿using System.Text;
+﻿using System.Net;
+using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Mvc;
 
 namespace SpotifyPlaylists;
 
@@ -41,18 +43,10 @@ public class SpotifyClient
         _spotifyClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
     }
 
-    public async Task<string?> MakeAuthenticatedRequest(string url)
+    public async Task<HttpResponseMessage> MakeAuthenticatedRequest(string url)
     {
         var response = await _spotifyClient.GetAsync(url);
-
-        if (response.IsSuccessStatusCode)
-        {
-            return await response.Content.ReadAsStringAsync();
-        }
-        else
-        {
-            Console.WriteLine($"Error making authenticated request to {url}: " + response.StatusCode);
-            return null;
-        }
+        if (!response.IsSuccessStatusCode) Console.WriteLine($"Error making authenticated request to {url}: " + response.StatusCode);
+        return response;
     }
 }
