@@ -1,52 +1,62 @@
-﻿using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using SpotifyPlaylists.Services;
 
 namespace SpotifyPlaylists;
 
 public class SpotifyClient
 {
-    public HttpClient _spotifyClient = new HttpClient();
-    public SpotifyClient(HttpClient spotifyClient)
+    private readonly HttpClient _httpClient;
+    private readonly ISpotifyTokenService _tokenService;
+    private readonly ILogger<SpotifyClient> _logger;
+
+    public SpotifyClient(HttpClient httpClient, ISpotifyTokenService tokenService, ILogger<SpotifyClient> logger)
     {
-        _spotifyClient = spotifyClient;
+        _httpClient = httpClient;
+        _tokenService = tokenService;
+        _logger = logger;
     }
 
-    public async Task<string?> GetOAuthToken(string clientId, string clientSecret, string tokenUrl)
+    /// <summary>Gets an OAuth token using the provided credentials (e.g. for the token API endpoint).</summary>
+    public async Task<string?> GetOAuthToken(string clientId, string clientSecret, string tokenUrl, CancellationToken cancellationToken = default)
     {
         var requestBody = new StringContent(
             $"grant_type=client_credentials&client_id={clientId}&client_secret={clientSecret}",
             Encoding.UTF8,
-            "application/x-www-form-urlencoded"
-        );
+            "application/x-www-form-urlencoded");
 
-        var response = await _spotifyClient.PostAsync(tokenUrl, requestBody);
+        var response = await _httpClient.PostAsync(tokenUrl, requestBody, cancellationToken);
 
         if (response.IsSuccessStatusCode)
         {
-            var responseContent = await response.Content.ReadAsStringAsync();
-            using (var doc = JsonDocument.Parse(responseContent))
-            {
-                return doc.RootElement.GetProperty("access_token").GetString();
-            }
+            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var doc = JsonDocument.Parse(responseContent);
+            return doc.RootElement.TryGetProperty("access_token", out var prop) ? prop.GetString() : null;
         }
-        else
+
+        _logger.LogError("Error fetching token: {StatusCode}", response.StatusCode);
+        return null;
+    }
+
+    /// <summary>Performs an authenticated GET to the Spotify API using the cached token.</summary>
+    public async Task<HttpResponseMessage> MakeAuthenticatedRequest(string url, CancellationToken cancellationToken = default)
+    {
+        var token = await _tokenService.GetTokenAsync(cancellationToken);
+        if (string.IsNullOrEmpty(token))
         {
-            Console.WriteLine("Error fetching token: " + response.StatusCode);
-            return null;
+            _logger.LogError("No token available for authenticated request.");
+            return new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized);
         }
-    }
 
-    public void AttachBearerToken(string token)
-    {
-        _spotifyClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-    }
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var response = await _httpClient.SendAsync(request, cancellationToken);
 
-    public async Task<HttpResponseMessage> MakeAuthenticatedRequest(string url)
-    {
-        var response = await _spotifyClient.GetAsync(url);
-        if (!response.IsSuccessStatusCode) Console.WriteLine($"Error making authenticated request to {url}: " + response.StatusCode);
+        if (!response.IsSuccessStatusCode)
+            _logger.LogWarning("Spotify API request failed: {Url} {StatusCode}", url, response.StatusCode);
+
         return response;
     }
 }
